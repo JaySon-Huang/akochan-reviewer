@@ -84,6 +84,16 @@ fn main() -> Result<()> {
                 ),
         )
         .arg(
+            Arg::with_name("actor-name")
+                .long("actor-name")
+                .takes_value(true)
+                .value_name("ACTOR_NAME")
+                .help(
+                    "Specify the actor name to review \
+                    when --in-file is specified and --actor is not specified",
+                ),
+        )
+        .arg(
             Arg::with_name("kyokus")
                 .short("k")
                 .long("kyokus")
@@ -333,6 +343,7 @@ fn main() -> Result<()> {
     let arg_akochan_dir = matches.value_of_os("akochan-dir");
     let arg_tactics_config = matches.value_of_os("tactics-config");
     let arg_actor: Option<u8> = matches.value_of("actor").map(|p| p.parse().unwrap());
+    let arg_actor_name: Option<String> = matches.value_of("actor-name").map(String::from);
     let arg_pt = matches.value_of("pt");
     let arg_kyokus = matches.value_of("kyokus");
     let arg_use_placement_ev = matches.is_present("use-placement-ev");
@@ -498,6 +509,17 @@ fn main() -> Result<()> {
             json::from_reader(handle).context("failed to parse tenhou.net/6 log")?
         }
     };
+
+    // Try to match the name from arg
+    if actor_opt.is_none() {
+        if let Some(actor_name) = arg_actor_name {
+            for (idx, n) in raw_log.get_names().iter().enumerate() {
+                if *n == actor_name {
+                    actor_opt = Some(idx as u8)
+                }
+            }
+        }
+    }
 
     // apply filters
     if arg_anonymous {
