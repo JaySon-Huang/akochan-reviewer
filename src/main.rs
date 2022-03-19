@@ -10,6 +10,8 @@ mod state;
 mod tactics;
 mod tehai;
 
+use crate::render::Layout;
+
 use self::log_source::LogSource;
 use self::metadata::Metadata;
 use self::raw_log_ext::RawLogExt;
@@ -301,6 +303,21 @@ fn main() -> Result<()> {
                 .long("verbose")
                 .help("Use verbose output."),
         )
+        .arg(
+            Arg::with_name("layout")
+                .long("layout")
+                .takes_value(true)
+                .value_name("LAYOUT")
+                .help(
+                    "Set the layout for the rendered report page. \
+                    Default value \"vertical\". \
+                    Supported layout: vertical, v, horizontal, h.",
+                )
+                .validator(|v| match v.as_str() {
+                    "v" | "vertical" | "h" | "horizontal" => Ok(()),
+                    _ => Err(format!("unsupported layout {}", v)),
+                }),
+        )
         .arg(Arg::with_name("URL").help("Tenhou or Mahjong Soul log URL."))
         .get_matches();
 
@@ -331,6 +348,15 @@ fn main() -> Result<()> {
     let arg_lang = matches.value_of("lang");
     let arg_verbose = matches.is_present("verbose");
     let arg_url = matches.value_of("URL");
+
+    let layout = match matches.value_of("layout") {
+        None => Layout::Vertical,
+        Some(arg_layout) => match arg_layout {
+            "h" | "horizontal" => Layout::Horizontal,
+            "v" | "vertical" => Layout::Vertical,
+            _ => unreachable!(),
+        },
+    };
 
     if let Some(tenhou_ids_file) = arg_tenhou_ids_file {
         let out_dir_name = arg_out_dir
@@ -490,7 +516,7 @@ fn main() -> Result<()> {
     // See https://manishearth.github.io/blog/2017/04/13/prolonging-temporaries-in-rust/
     // for the technique of extending the lifetime of temp var here.
     let cloned_raw_log;
-    let splited_raw_logs = if !arg_without_viewer {
+    let splitted_raw_logs = if !arg_without_viewer {
         cloned_raw_log = raw_log.clone();
         Some(cloned_raw_log.split_by_kyoku())
     } else {
@@ -673,7 +699,14 @@ fn main() -> Result<()> {
     };
 
     // render the HTML report page or JSON
-    let view = View::new(&review_result.kyokus, actor, splited_raw_logs, &meta, lang);
+    let view = View::new(
+        &review_result.kyokus,
+        actor,
+        splitted_raw_logs,
+        &meta,
+        lang,
+        layout,
+    );
     if arg_json {
         log!("writing output...");
         json::to_writer(&mut out_write, &view).context("failed to write JSON result")?;
