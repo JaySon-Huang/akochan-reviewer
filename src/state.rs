@@ -383,46 +383,40 @@ impl ShantenHelper {
         PAIS_VEC_LEN
     }
 
-    fn try_take_3(&mut self, take_idx: usize) -> Option<([Pai; 3], usize)> {
+    fn try_take_3same(&mut self, take_idx: usize) -> Option<([Pai; 3], usize)> {
         for idx in take_idx..48 {
-            let idx = idx;
-            let num = self.pais[idx];
-            if num < 1 {
-                continue;
-            }
-            // 1~9s, 1~9p, 1~9m
-            if (11..=19).contains(&idx) || (21..=29).contains(&idx) || (31..=39).contains(&idx) {
-                // try to get triplet (AAA)
-                if num >= 3 {
-                    if let Ok(pai) = Pai::try_from(idx as u8) {
-                        let meld = [pai, pai, pai];
-                        self.take(&meld);
-                        return Some((meld, idx));
-                    }
-                }
-                // 1~7s, 1~7p, 1~7m
-                if (11..18).contains(&idx) || (21..28).contains(&idx) || (31..38).contains(&idx) {
-                    // try to get sequence (ABC)
-                    if self.pais[idx + 1] < 1 || self.pais[idx + 2] < 1 {
-                        continue;
-                    }
-                    let meld = [
-                        Pai::try_from(idx as u8).unwrap(),
-                        Pai::try_from((idx + 1) as u8).unwrap(),
-                        Pai::try_from((idx + 2) as u8).unwrap(),
-                    ];
-                    self.take(&meld);
-                    return Some((meld, idx));
-                }
-            }
             // try to get triplet (AAA)
-            if (41..=47).contains(&idx) && num >= 3 {
+            if self.pais[idx] >= 3 {
                 if let Ok(pai) = Pai::try_from(idx as u8) {
                     let meld = [pai, pai, pai];
                     self.take(&meld);
                     return Some((meld, idx));
                 }
             }
+        }
+        None
+    }
+
+    fn try_take_3diff(&mut self, take_idx: usize) -> Option<([Pai; 3], usize)> {
+        for idx in take_idx..48 {
+            if self.pais[idx] < 1 {
+                continue;
+            }
+            // 1~7s, 1~7p, 1~7m
+            if (11..18).contains(&idx) || (21..28).contains(&idx) || (31..38).contains(&idx) {
+                // try to get sequence (ABC)
+                if self.pais[idx + 1] < 1 || self.pais[idx + 2] < 1 {
+                    continue;
+                }
+                let meld = [
+                    Pai::try_from(idx as u8).unwrap(),
+                    Pai::try_from((idx + 1) as u8).unwrap(),
+                    Pai::try_from((idx + 2) as u8).unwrap(),
+                ];
+                self.take(&meld);
+                return Some((meld, idx));
+            }
+            // else not possible for 89s, 89p, 89m 41..=47
         }
         None
     }
@@ -513,8 +507,9 @@ impl ShantenHelper {
             return;
         }
 
-        // take a meld TODO: handle AAABC
-        if let Some((meld, next_search_idx)) = self.try_take_3(begin_idx) {
+        // In order to handle AAABBCC, we need to try to take 3 difference pais as meld
+        // then again try to take 3 same pais as meld.
+        if let Some((meld, next_search_idx)) = self.try_take_3diff(begin_idx) {
             log_if!(self.verbose, "take {:?} as meld begin", meld);
             self.search_by_take_3(
                 level + 1,
@@ -532,6 +527,25 @@ impl ShantenHelper {
                 self.normal_shanten,
             );
         }
+        if let Some((meld, next_search_idx)) = self.try_take_3same(begin_idx) {
+            log_if!(self.verbose, "take {:?} as meld begin", meld);
+            self.search_by_take_3(
+                level + 1,
+                next_search_idx,
+                c_max,
+                k,
+                exist_eye,
+                num_meld + 1,
+            );
+            self.rollback_pais(&meld);
+            log_if!(
+                self.verbose,
+                "take {:?} as meld done, s: {}",
+                meld,
+                self.normal_shanten,
+            );
+        }
+        
         log_if!(
             self.verbose,
             "take nothing as meld begin, idx: {}",
@@ -579,17 +593,6 @@ impl ShantenHelper {
             return;
         }
         let c = 3 * num_meld + 2 * num_dazi + 2 * exist_eye;
-        if self.num_pais_rem < *c_max - c {
-            log_if!(
-                self.verbose,
-                "search end. cur state: {:?}. cause: {} < {} - {}",
-                self.state,
-                self.num_pais_rem,
-                c_max,
-                c
-            );
-            return;
-        }
         if self.num_pais_rem == 0 {
             let penalty = std::cmp::max(num_meld + num_dazi + exist_eye - 5, 0);
             let q = if num_meld + num_dazi + exist_eye <= 4 {
@@ -675,6 +678,16 @@ mod tests {
             ("49m2358p23469s24z1m", 5),
             ("149m258p2369s124z7s", 6),
             ("4444m6666p1111s55z", 1),
+            ("5556678p334455s4p", -1),
+            ("5556678p334455s6p", -1),
+            ("5556678p334455s7p", -1),
+            ("5556678p334455s9p", -1),
+            ("555678p3334455s", 0),
+            ("555678p3334455s3s", -1),
+            ("555678p3334455s4s", -1),
+            ("555678p3334455s5s", -1),
+            ("555678p3334455s6s", -1),
+            ("5556678p3334455s", 0),
         ]);
         for (input, s) in cases {
             println!("input: '{}'", input);
